@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test</title>
+</head>
+<body>
+<script type="module">
+  import init, {svg, png,webp} from './pkg/index.js'
+
+  window.onload = async function() {
+    await init();
+
+    const msg = '1231203912321312312313132902131231203912321312312313132902131231203912321312312313132902131231203912321312312313132902131231203912321312312311313290213123120391232131231231313290213123120391232131231231313290213123120391232131231231313290213123120391232';
+
+    try {
+      let img1 =  svg(msg, 3, 3, '#fff', '#000')
+      console.log(img1.length, img1)
+      let dom1 = document.createElement('div')
+      dom1.style = 'background: red'
+      dom1.innerHTML = img1;
+      document.body.appendChild(dom1)
+    } catch (error) {
+      console.log('A', error)
+    }
+
+    try {
+      let img2 =  png(msg, 3, 2, 'none', '#fff')
+      console.log(img2.length, img2.buffer)
+      let b = new Blob([img2.buffer], { type: 'image/png' });
+      let url = URL.createObjectURL(b);
+      console.log(b, url)
+      let dom2 = document.createElement('img')
+      dom2.src = url;
+      document.body.appendChild(dom2)
+    } catch (error) {
+      console.log('B', error)
+    }
+
+    try {
+      let img3 =  webp(msg, 3, 2, 'none', '#fff')
+      console.log(img3.length, img3.buffer)
+      let b = new Blob([img3.buffer], { type: 'image/webp' });
+      let url = URL.createObjectURL(b);
+      console.log(b, url)
+      let dom3 = document.createElement('img')
+      dom3.src = url;
+      document.body.appendChild(dom3)
+    } catch (error) {
+      console.log('C', error)
+    }
+  }
+</script>
+</body>
+</html>
