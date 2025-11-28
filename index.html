@@ -3,54 +3,437 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Test</title>
+  <title>QR Code</title>
+  <link rel="stylesheet" href="/index_style.css">
 </head>
-<body>
-<script type="module">
-  import init, {svg, png,webp} from './pkg/index.js'
 
-  window.onload = async function() {
-    await init();
+<body class="subpixel-antialiased hyphens-auto size-full min-h-screen">
+  <div id="generator" v-show="start" class="max-w-300 mx-auto pt-10 flex gap-10">
+    <section class="shadow bg-white rounded-xl basis-80 p-8">
+      <div class="size-60 bg-gray-300 mx-auto">
+        <template v-if="blobUrl">
+          <img :src="blobUrl" class="size-full" alt="" />
+        </template>
+      </div>
 
-    const msg = '1231203912321312312313132902131231203912321312312313132902131231203912321312312313132902131231203912321312312313132902131231203912321312312311313290213123120391232131231231313290213123120391232131231231313290213123120391232131231231313290213123120391232';
+      <div class="px-4 my-3">
+        <button type="button" tabindex="-1" class="btn btn-success btn-wide btn-outline" :disabled="loading||!blobUrl" @click="download">下载</button>
+      </div>
 
-    try {
-      let img1 =  svg(msg, 3, 3, '#fff', '#000')
-      console.log(img1.length, img1)
-      let dom1 = document.createElement('div')
-      dom1.style = 'background: red'
-      dom1.innerHTML = img1;
-      document.body.appendChild(dom1)
-    } catch (error) {
-      console.log('A', error)
+      <div class="collapse collapse-arrow join-item border-base-300 border">
+        <input type="checkbox" name="details" v-model="details" />
+        <div class="collapse-title font-semibold text-sm">{{result}}</div>
+        <div class="collapse-content">
+          <table class="w-full">
+            <colgroup>
+              <col class="w-2/5" />
+              <col class="w-3/5" />
+            </colgroup>
+
+            <tbody>
+              <tr>
+                <td>格式</td>
+                <td>
+                  <select class="select select-sm" v-model="type" :disabled="loading" @change="onChange">
+                    <template v-for="(item, idx) in typeList">
+                      <option :value="item.ext">{{ item.name + '(' + item.ext + ')' + (idx === 0 ? ' · 默认' : '') }}</option>
+                    </template>
+                  </select>
+                </td>
+              </tr>
+              <tr>
+                <td>容错率</td>
+                <td>
+                  <select class="select select-sm" v-model="level" :disabled="loading" @change="onChange">
+                    <template v-for="(item, idx) in levelList">
+                      <option :value="item.lv" :disabled="item.disabled">{{ levelToStr(item.lv) + (levelToStr(99) === levelToStr(item.lv) ? ' · 默认' : '') }}</option>
+                    </template>
+                  </select>
+                </td>
+              </tr>
+              <tr>
+                <td>尺寸</td>
+                <td>
+                  <input type="number" placeholder="300" class="input input-sm" v-model="size" :disabled="loading" />
+                </td>
+              </tr>
+              <tr>
+                <td>码版本</td>
+                <td>
+                  <select class="select select-sm" name="version" v-model="version" :disabled="loading" @change="onChange">
+                    <template v-for="(item, idx) in versionList">
+                      <option :value="item.size" :disabled="item.disabled">{{ idx+1 + ': ' + item.size + 'x' + item.size }}</option>
+                    </template>
+                  </select>
+                </td>
+              </tr>
+              <tr>
+                <td>有无边距</td>
+                <td class="leading-10">
+                  <input type="checkbox" :disabled="loading" class="toggle toggle-info" v-model="quiet" @change="onChange" />
+                </td>
+              </tr>
+              <tr>
+                <td>码色</td>
+                <td class="flex items-center">
+                  <input type="color" :disabled="loading" v-model="darkColor" class="shrink-0" />
+                  <input type="text" :disabled="loading" v-model="darkColor" class="input input-sm font-mono ml-1 flex-1 w-0" />
+                </td>
+              </tr>
+              <tr>
+                <td>底色</td>
+                <td class="flex items-center">
+                  <input type="color" :disabled="loading" v-model="lightColor" class="shrink-0" />
+                  <input type="text" :disabled="loading" v-model="lightColor" class="input input-sm font-mono ml-1 flex-1 w-0" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="shadow bg-white rounded-xl flex-1 p-8">
+      <textarea v-model="content" class="border rounded-xl w-full p-1 min-h-100" name="content" placeholder="输入内容" :disabled="loading" tabindex="1"></textarea>
+
+      <template v-if="alertMsg">
+        <div role="alert" class="alert alert-warning">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 shrink-0 stroke-current" fill="none" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          {{ alertMsg }}
+        </div>
+      </template>
+
+      <div class="flex justify-end mt-3">
+        <button type="button" tabindex="2" class="btn btn-primary" :disabled="loading" @click="make">
+          <span v-show="loading" class="loading loading-spinner"></span>
+          生成{{ loading ? '中...' : '' }}
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    !(function(_global) {
+  "use strict";
+
+  function bom(blob, opts) {
+    if (typeof opts === 'undefined') opts = {
+      autoBom: false
+    };else if (typeof opts !== 'object') {
+      console.warn('Deprecated: Expected third argument to be a object');
+      opts = {
+        autoBom: !opts
+      };
+    } // prepend BOM for UTF-8 XML and text/* types (including HTML)
+    // note: your browser will automatically convert UTF-16 U+FEFF to EF BB BF
+
+    if (opts.autoBom && /^\s*(?:text\/\S*|application\/xml|\S*\/\S*\+xml)\s*;.*charset\s*=\s*utf-8/i.test(blob.type)) {
+      return new Blob([String.fromCharCode(0xFEFF), blob], {
+        type: blob.type
+      });
     }
 
-    try {
-      let img2 =  png(msg, 3, 2, 'none', '#fff')
-      console.log(img2.length, img2.buffer)
-      let b = new Blob([img2.buffer], { type: 'image/png' });
-      let url = URL.createObjectURL(b);
-      console.log(b, url)
-      let dom2 = document.createElement('img')
-      dom2.src = url;
-      document.body.appendChild(dom2)
-    } catch (error) {
-      console.log('B', error)
-    }
-
-    try {
-      let img3 =  webp(msg, 3, 2, 'none', '#fff')
-      console.log(img3.length, img3.buffer)
-      let b = new Blob([img3.buffer], { type: 'image/webp' });
-      let url = URL.createObjectURL(b);
-      console.log(b, url)
-      let dom3 = document.createElement('img')
-      dom3.src = url;
-      document.body.appendChild(dom3)
-    } catch (error) {
-      console.log('C', error)
-    }
+    return blob;
   }
-</script>
+
+  function download(url, name, opts) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url);
+    xhr.responseType = 'blob';
+
+    xhr.onload = function () {
+      saveAs(xhr.response, name, opts);
+    };
+
+    xhr.onerror = function () {
+      console.error('could not download file');
+    };
+
+    xhr.send();
+  }
+
+  function corsEnabled(url) {
+    var xhr = new XMLHttpRequest(); // use sync to avoid popup blocker
+
+    xhr.open('HEAD', url, false);
+
+    try {
+      xhr.send();
+    } catch (e) {}
+
+    return xhr.status >= 200 && xhr.status <= 299;
+  } // `a.click()` doesn't work for all browsers (#465)
+
+
+  function click(node) {
+    try {
+      node.dispatchEvent(new MouseEvent('click'));
+    } catch (e) {
+      var evt = document.createEvent('MouseEvents');
+      evt.initMouseEvent('click', true, true, window, 0, 0, 0, 80, 20, false, false, false, false, 0, null);
+      node.dispatchEvent(evt);
+    }
+  } // Detect WebView inside a native macOS app by ruling out all browsers
+  // We just need to check for 'Safari' because all other browsers (besides Firefox) include that too
+  // https://www.whatismybrowser.com/guides/the-latest-user-agent/macos
+
+
+  var isMacOSWebView = _global.navigator && /Macintosh/.test(navigator.userAgent) && /AppleWebKit/.test(navigator.userAgent) && !/Safari/.test(navigator.userAgent);
+  var saveAs = _global.saveAs || ( // probably in some web worker
+  typeof window !== 'object' || window !== _global ? function saveAs() {}
+  /* noop */
+  // Use download attribute first if possible (#193 Lumia mobile) unless this is a macOS WebView
+  : 'download' in HTMLAnchorElement.prototype && !isMacOSWebView ? function saveAs(blob, name, opts) {
+    var URL = _global.URL || _global.webkitURL;
+    var a = document.createElement('a');
+    name = name || blob.name || 'download';
+    a.download = name;
+    a.rel = 'noopener'; // tabnabbing
+    // TODO: detect chrome extensions & packaged apps
+    // a.target = '_blank'
+
+    if (typeof blob === 'string') {
+      // Support regular links
+      a.href = blob;
+
+      if (a.origin !== location.origin) {
+        corsEnabled(a.href) ? download(blob, name, opts) : click(a, a.target = '_blank');
+      } else {
+        click(a);
+      }
+    } else {
+      // Support blobs
+      a.href = URL.createObjectURL(blob);
+      setTimeout(function () {
+        URL.revokeObjectURL(a.href);
+      }, 4E4); // 40s
+
+      setTimeout(function () {
+        click(a);
+      }, 0);
+    }
+  } // Use msSaveOrOpenBlob as a second approach
+  : 'msSaveOrOpenBlob' in navigator ? function saveAs(blob, name, opts) {
+    name = name || blob.name || 'download';
+
+    if (typeof blob === 'string') {
+      if (corsEnabled(blob)) {
+        download(blob, name, opts);
+      } else {
+        var a = document.createElement('a');
+        a.href = blob;
+        a.target = '_blank';
+        setTimeout(function () {
+          click(a);
+        });
+      }
+    } else {
+      navigator.msSaveOrOpenBlob(bom(blob, opts), name);
+    }
+  } // Fallback to using FileReader and a popup
+  : function saveAs(blob, name, opts, popup) {
+    // Open a popup immediately do go around popup blocker
+    // Mostly only available on user interaction and the fileReader is async so...
+    popup = popup || open('', '_blank');
+
+    if (popup) {
+      popup.document.title = popup.document.body.innerText = 'downloading...';
+    }
+
+    if (typeof blob === 'string') return download(blob, name, opts);
+    var force = blob.type === 'application/octet-stream';
+
+    var isSafari = /constructor/i.test(_global.HTMLElement) || _global.safari;
+
+    var isChromeIOS = /CriOS\/[\d]+/.test(navigator.userAgent);
+
+    if ((isChromeIOS || force && isSafari || isMacOSWebView) && typeof FileReader !== 'undefined') {
+      // Safari doesn't allow downloading of blob URLs
+      var reader = new FileReader();
+
+      reader.onloadend = function () {
+        var url = reader.result;
+        url = isChromeIOS ? url : url.replace(/^data:[^;]*;/, 'data:attachment/file;');
+        if (popup) popup.location.href = url;else location = url;
+        popup = null; // reverse-tabnabbing #460
+      };
+
+      reader.readAsDataURL(blob);
+    } else {
+      var URL = _global.URL || _global.webkitURL;
+      var url = URL.createObjectURL(blob);
+      if (popup) popup.location = url;else location.href = url;
+      popup = null; // reverse-tabnabbing #460
+
+      setTimeout(function () {
+        URL.revokeObjectURL(url);
+      }, 4E4); // 40s
+    }
+  });
+  _global.saveAs = saveAs.saveAs = saveAs;
+}(window)
+    );
+  </script>
+
+  <script type="module">
+    import { createApp, ref, nextTick, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js'
+    import init, { gen } from '/index.js';
+
+
+    createApp({
+      setup() {
+        const typeList = [
+          { name: "SVG", ext: ".svg", mime: "image/svg+xml" },
+          { name: "PNG", ext: ".png", mime: "image/png" },
+          { name: "JPEG", ext: ".jpeg", mime: "image/jpeg" },
+          { name: "GIF", ext: ".gif", mime: "image/gif" },
+          { name: "WebP", ext: ".webp", mime: "image/webp" },
+          { name: "PNM", ext: ".pbm", mime: "image/x-portable-anymap" }, // application/x-portable-anymap
+          { name: "TIFF", ext: ".tiff", mime: "image/tiff" },
+          { name: "TGA", ext: ".tga", mime: "image/x-tga" },
+          { name: "DDS", ext: ".dds", mime: "image/vnd.ms-dds" },
+          { name: "BMP", ext: ".bmp", mime: "image/bmp" },
+          { name: "ICO", ext: ".ico", mime: "image/x-icon" }, // 	image/vnd.microsoft.icon
+          { name: "HDR", ext: ".hdr", mime: "application/octet-stream" },
+          { name: "OpenEXR", ext: ".exr", mime: "image/x-exr" },
+          { name: "Farbfeld", ext: ".ff", mime: "application/octet-stream" },
+          { name: "AVIF", ext: ".avif", mime: "image/avif" },
+          { name: "QOI", ext: ".qoi", mime: "application/octet-stream" },
+        ];
+        const levelList = [];
+        const versionList = ref([]);
+
+        for (let i = 0; i <= 3; i++) {
+          levelList.push({
+            lv: i,
+            disabled: false,
+          })
+        }
+
+        for (let i = 21; i <= 177; i+=4) {
+          versionList.value.push({
+            size: i,
+            disabled: false,
+          });
+        }
+
+        const start = ref(false);
+        const loading = ref(false);
+        const details = ref(false);
+        const quiet = ref(false);
+        const size = ref('300');
+        const content = ref('');
+        const type = ref(typeList[0].ext);
+        const level = ref('0');
+        const version = ref('' + versionList.value[0].size);
+        const darkColor = ref('#000000');
+        const lightColor = ref('#ffffff');
+        let blob = null;
+        const blobUrl = ref('');
+        const alertMsg = ref('');
+        const result = ref('SVG、L (7%)容错');
+
+        onMounted(async () => {
+          await init();
+          start.value = true;
+        })
+
+        function levelToStr(lv) {
+          switch (lv) {
+            case 3: return 'H (30%)';
+            case 2: return 'Q (25%)';
+            case 1: return 'M (15%)';
+            default: return 'L (7%)';
+          }
+        }
+
+        async function make() {
+          alertMsg.value = '';
+
+          if (!content.value) {
+            alertMsg.value = '请输入内容，再生成';
+            return;
+          }
+
+          if (loading.value) return;
+          loading.value = true;
+
+          nextTick(() => {
+            makeQR();
+          });
+        }
+
+        function makeQR() {
+          try {
+            let res = gen(content.value, type.value, level.value, Number(size.value), quiet.value, lightColor.value, darkColor.value)
+            // console.log(res)
+            res = JSON.parse(res);
+            if (res.err) {
+              alertMsg.value = res.err;
+              return;
+            }
+            // const bytes = atob(res.img);
+            const binaryString = atob(res.img.replace(/%0A|\s/g, ''));
+
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i) & 0xff;
+            }
+
+            let t = typeList.find(i => i.ext === res.ext);
+            type.value = t.ext;
+
+            version.value = res.width;
+            versionList.value.forEach(v => {
+              v.disabled = v.size < res.width;
+            });
+
+            blob = new Blob([bytes], { type: t.mime })
+            blobUrl.value = URL.createObjectURL(blob);
+            result.value = `${t.name}、${levelToStr(level.value)}容错`;
+          } catch (error) {
+            alertMsg.value = error;
+          } finally {
+            loading.value = false;
+          }
+        }
+
+        function onChange() {
+          if (blobUrl.value) make();
+        }
+
+        function download() {
+          let filename = prompt('文件名', `${Date.now()}${type.value}`);
+          saveAs(blob, filename);
+        }
+
+        return {
+          typeList,
+          levelList,
+          versionList,
+          loading,
+          details,
+          quiet,
+          size,
+          content,
+          type,
+          level,
+          version,
+          darkColor,
+          lightColor,
+          blobUrl,
+          alertMsg,
+          result,
+          make,
+          levelToStr,
+          onChange,
+          download,
+        }
+      }
+    }).mount('#generator')
+  </script>
 </body>
+
 </html>

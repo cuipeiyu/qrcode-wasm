@@ -1,0 +1,16 @@
+// npx @tailwindcss/cli -i tw.css -o index_style.css -m
+
+@import "tailwindcss";
+@plugin "daisyui";
+@source "./index.html";
+
+body {
+  color: #222;
+  background: #f7f7f7;
+  transition:
+    color 0.5s,
+    background-color 0.5s;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

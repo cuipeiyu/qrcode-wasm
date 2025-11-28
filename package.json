@@ -1,0 +1,15 @@
+{
+  "name": "qrcode-wasm",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npx @tailwindcss/cli -i tw.css -o index_style.css -m & npx http-server ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.17",
+    "daisyui": "^5.5.5",
+    "http-server": "^14.1.1"
+  }
+}
