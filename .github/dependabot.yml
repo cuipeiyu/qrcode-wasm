@@ -3,6 +3,6 @@ updates:
 - package-ecosystem: cargo
   directory: "/"
   schedule:
-    interval: daily
-    time: "01:00"
+    interval: cron
+    cronjob: "0 12 1 * *"
   open-pull-requests-limit: 10
